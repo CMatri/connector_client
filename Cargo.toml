@@ -1,0 +1,7 @@
+[package]
+name = "connector-client"
+version = "0.1.0"
+authors = ["cmatri <cperkin4@gmu.edu>"]
+edition = "2018"
+
+[dependencies]
