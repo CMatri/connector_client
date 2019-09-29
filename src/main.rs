@@ -4,6 +4,34 @@ use std::str::from_utf8;
 use std::{thread, time};
 use enigo::*;
 
+const BUF_LEN: usize = 20;
+
+fn packet_handler(enigo: &mut Enigo, bytes: &[u8; BUF_LEN]) {
+    match bytes[0] {
+        0x01 => { // Mouse
+            let x = &bytes[1..7];
+            let y = &bytes[8..13];
+            let x_neg = bytes[14] != 0;
+            let y_neg = bytes[15] != 0;
+            let mut x_conv = String::from_utf8(x.iter().cloned().collect()).expect("fail").parse::<f32>().unwrap();
+            let mut y_conv = String::from_utf8(y.iter().cloned().collect()).expect("fail").parse::<f32>().unwrap();
+            if x_neg { x_conv *= -1.0; }
+            if y_neg { y_conv *= -1.0; }
+            enigo.mouse_move_relative((x_conv * 3.0) as i32, (y_conv * 2.0) as i32);
+        }
+        0x02 => {
+            if bytes[1] == 0 {
+                enigo.mouse_click(MouseButton::Left);
+            } else {
+                enigo.mouse_click(MouseButton::Right);    
+            }
+        } // Click,
+        0x03 => {} // Volume,
+        0x04 => {} // Key,
+        _ => {}
+    }
+}
+
 fn main() {
     let mut enigo = Enigo::new();
     match TcpStream::connect("192.168.1.9:8080") {
@@ -29,82 +57,15 @@ fn main() {
                 }
             }
 
-            const buf_len: usize = 512;
-            let mut data = [0 as u8; buf_len];
-            let sleep_time = time::Duration::from_millis(10);
-            let sleep_time_err = time::Duration::from_millis(500);
+            let mut data = [0 as u8; BUF_LEN];
             loop {
                 match stream.read(&mut data) {
-                    Ok(n) => {
-                        println!("Received {} bytes:", n);
-                        let mut i = 0;
-                        while i < buf_len {
-                            let mut byte = data[i];
-                            let mut x: Vec<Vec<u8>> = Vec::new();
-                            let mut y: Vec<Vec<u8>> = Vec::new();
-                            let mut temp_x: Vec<u8> = Vec::new();
-                            let mut temp_y: Vec<u8> = Vec::new();
-                            match byte { // welcome to my abomination. if you watch for a while it sprouts limbs and shrieks occasionally.
-                                0u8 => break,
-                                35u8 => { // #
-                                    if data[i+1] == 35u8 && data[i+2] == 35u8 {
-                                        i += 3;
-                                        'outer: loop {
-                                            byte = data[i];
-                                            match byte {
-                                                44u8 => { // ,
-                                                    if data[i+1] == 44u8 && data[i+2] == 44u8 {
-                                                        i += 3;
-                                                        loop {
-                                                            byte = data[i];
-                                                            match byte {
-                                                                59u8 => { // ;
-                                                                    if data[i+1] == 59u8 && data[i+2] == 59u8 {
-                                                                        x.push(temp_x.clone());
-                                                                        y.push(temp_y.clone());
-                                                                        let x_conv = String::from_utf8(temp_x).expect("fail").parse::<i32>().unwrap();
-                                                                        let y_conv = String::from_utf8(temp_y).expect("fail").parse::<i32>().unwrap();
-                                                                        println!("dX: {}", x_conv);
-                                                                        println!("dY: {}", y_conv);
-                                                                        enigo.mouse_move_relative(x_conv, y_conv);
-                                                                        break 'outer;
-                                                                    } else {
-                                                                        i += 1;
-                                                                    }
-                                                                },
-                                                                _ => {
-                                                                    temp_y.push(byte);
-                                                                    i += 1;
-                                                                }
-                                                            }
-                                                        }
-                                                    } else {
-                                                        i += 1;
-                                                    }
-                                                },
-                                                _ => {
-                                                    temp_x.push(byte);
-                                                    i += 1;
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        i += 1;
-                                    }
-                                },
-                                _ => i += 1
-                            }
-
-                        }
-                        println!("");
-                    },
+                    Ok(_) => packet_handler(&mut enigo, &data),
                     Err(e) => {
-                        println!("failed to receive data: {}", e);
+                        println!("Failed to receive data: {}", e);
                         break;
-                        //thread::sleep(sleep_time_err);
                     }
                 }
-                thread::sleep(sleep_time);
             }
         },
         Err(e) => {
