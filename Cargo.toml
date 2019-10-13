@@ -7,3 +7,4 @@ edition = "2018"
 [dependencies]
 enigo = "0.0.13"
 winapi = { version="0.3.8", features = ["mmeapi"] }
+lerp = "0.2.0"
